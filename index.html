@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invoice Generator</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Helvetica:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: Helvetica, sans-serif;
+      margin: 20px;
+    }
+
+    body, .page {
+      font-family: 'Helvetica', sans-serif;
+    }
+
+    .form-container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    
+    input, textarea, select {
+      width: 100%;
+      margin: 10px 0;
+      padding: 8px;
+      box-sizing: border-box;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .button {
+      padding: 10px 15px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+
+    .button:hover {
+      background-color: #0056b3;
+    }
+
+    #previewContainer {
+      margin-top: 20px;
+      max-width: 794px; /* A4 width */
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .page {
+      font-family: Helvetica, sans-serif;
+      width: 794px;
+      height: 1123px;
+      border: 1px solid #ddd;
+      padding: 30px;
+      margin: 10px auto;
+      box-sizing: border-box;
+      background-color: white;
+      position: relative;
+    }
+
+    .preview-header {
+      font-family: Helvetica, sans-serif;
+      font-weight: bold;
+      font-size: 36px;
+      margin-bottom: 20px;
+      text-align: left;
+    }
+
+    .info-block {
+      margin-top: 10px;
+      margin-bottom: 5px;
+    }
+
+    .info-block p {
+      margin: 5px 0;
+    }
+
+    .from-bill-to-section {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 25px;
+    }
+
+    .from-section, .bill-to-section {
+      font-size: 14px;
+      line-height: 1.6;
+      width: 48%;
+    }
+
+    .due-text {
+      text-align: right;
+      font-style: italic;
+      margin-top: 20px;
+      font-size: 12px;
+      color: #555;
+    }
+
+    .total-block {
+      text-align: right;
+      font-weight: bold;
+      font-size: 20px;
+      margin-top: 20px;
+    }
+
+    .logo {
+      position: absolute;
+      top: 30px;
+      right: 30px;
+      max-width: 120px;
+      max-height: 80px;
+      object-fit: contain;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 12px;
+    }
+
+    th {
+      background-color: #f4f4f4;
+      text-align: center;
+    }
+
+    td {
+      text-align: left;
+    }
+
+    .footer-text {
+      font-size: 10px;
+      color: gray;
+      margin-top: 30px;
+    }
+  </style>
+</head>
+<body>
+  <div class="form-container">
+    <h1>Invoice Generator</h1>
+    
+    <label for="invoiceNumber">Invoice Number:<br>
+      <p style="color: grey; font-size: 10px">
+        <strong>FORMAT:</strong> NAME-CURRENCY-TYPEofINVOICE-MONTH-YEAR <br>
+        (e.g: REDOT-USD-CAAS-DEC-24)<br>
+        (e.g: REDOT-USD-IMP.FEE-DEC-24)
+      </p>
+    </label>
+    <input id="invoiceNumber" type="text" placeholder="Enter invoice number">
+
+    <label for="invoiceMonth">Invoice Month:</label>
+    <input id="invoiceMonth" type="text" placeholder="Enter invoice month">
+
+    <label for="billTo">Bill To:</label>
+    <input id="billTo" type="text" placeholder="Enter bill to information">
+
+    <label for="inputChoice">How would you like to input data?</label>
+    <select id="inputChoice" onchange="handleChoiceChange()">
+      <option value="">-- Select an option --</option>
+      <option value="manual">Input Manually</option>
+      <option value="copyPaste">Copy and Paste from Excel/Sheet</option>
+    </select>
+
+    <!-- Manual Input -->
+    <div id="manualInputContainer" class="hidden">
+      <label for="manualInput">Enter data (each line: Title;Unit;Unit Cost):</label>
+      <textarea id="manualInput" rows="10" cols="50" placeholder="e.g.
+    Item1;10;25.50
+    Item2;5;100.00"></textarea>
+    </div>
+
+    <!-- Copy-Paste Input -->
+    <div id="copyPasteContainer" class="hidden">
+      <p>Paste rows from an Excel sheet (Title, Unit, Unit Cost):</p>
+      <textarea id="excelInput" rows="10" cols="50" placeholder="Paste Excel data here..."></textarea>
+    </div>
+
+    <!-- Buttons -->
+    <div id="buttonsContainer" class="hidden">
+      <button class="button" onclick="generatePreview()">Generate Invoice</button>
+      <button class="button" onclick="generatePDF()">Download PDF</button>
+    </div>
+  </div>
+
+  <div id="previewContainer"></div>
+
+  <script>
+    const logoBase64 = "https://i.imgur.com/U5hAUcw.png";
+
+    function handleChoiceChange() {
+      const choice = document.getElementById('inputChoice').value;
+      const manualInputContainer = document.getElementById('manualInputContainer');
+      const copyPasteContainer = document.getElementById('copyPasteContainer');
+      const buttonsContainer = document.getElementById('buttonsContainer');
+
+      if (choice === 'manual') {
+        manualInputContainer.classList.remove('hidden');
+        copyPasteContainer.classList.add('hidden');
+        buttonsContainer.classList.remove('hidden');
+      } else if (choice === 'copyPaste') {
+        manualInputContainer.classList.add('hidden');
+        copyPasteContainer.classList.remove('hidden');
+        buttonsContainer.classList.remove('hidden');
+      } else {
+        manualInputContainer.classList.add('hidden');
+        copyPasteContainer.classList.add('hidden');
+        buttonsContainer.classList.add('hidden');
+      }
+    }
+
+function generatePreview() {
+  const inputChoice = document.getElementById('inputChoice').value;
+  const invoiceNumber = document.getElementById('invoiceNumber').value || "N/A";
+  const invoiceMonth = document.getElementById('invoiceMonth').value || "N/A";
+  const billTo = document.getElementById('billTo').value || "N/A";
+  const issueDate = formatDate(new Date());
+  const dueDate = addOneMonth(new Date());
+
+  let rows = [];
+
+  // Utility function to clean and parse numbers
+  const cleanNumber = (input) => parseFloat(input.replace(/,/g, '') || 0);
+
+  // Handle manual input
+  if (inputChoice === 'manual') {
+    const manualInput = document.getElementById('manualInput').value;
+    rows = manualInput.trim().split('\n').map(row => {
+      const [title, unit, unitCost] = row.split(';');
+      return {
+        title: title.trim(),
+        unit: cleanNumber(unit.trim()),
+        unitCost: cleanNumber(unitCost.trim()),
+        total: cleanNumber(unit.trim()) * cleanNumber(unitCost.trim())
+      };
+    });
+  }
+  // Handle copy-paste input
+  else if (inputChoice === 'copyPaste') {
+    const input = document.getElementById('excelInput').value;
+    rows = input.trim().split('\n').map(row => {
+      const [title, unit, unitCost] = row.split('\t');
+      return {
+        title: title.trim(),
+        unit: cleanNumber(unit.trim()),
+        unitCost: cleanNumber(unitCost.trim()),
+        total: cleanNumber(unit.trim()) * cleanNumber(unitCost.trim())
+      };
+    });
+  }
+
+  const totalAmount = rows.reduce((sum, item) => sum + item.total, 0);
+  const previewContainer = document.getElementById('previewContainer');
+  previewContainer.innerHTML = '';
+
+  const rowsPerPage = 15;
+  const pages = Math.ceil(rows.length / rowsPerPage);
+
+  for (let page = 0; page < pages; page++) {
+    const pageRows = rows.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
+    const pageDiv = document.createElement('div');
+    pageDiv.classList.add('page');
+
+    // Check if this is the last page
+    const isLastPage = page === pages - 1;
+
+    // Check if footer should move to a new page
+    const isFooterOnNewPage = rows.length >= 12 && rows.length <= 15;
+
+    // Format numbers with commas and handle negative values
+    const formatNumber = (number) => {
+      const absNumber = Math.abs(number).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return number < 0 ? `(${absNumber})` : absNumber;
+    };
+
+    // Page content
+    pageDiv.innerHTML = `
+      ${logoBase64 && page === 0 ? `<img src="${logoBase64}" class="logo">` : ''}
+      ${page === 0 ? `
+        <div class="preview-header">Invoice</div>
+        <div class="info-block">
+          <p><strong>Invoice Number:</strong> ${invoiceNumber}</p>
+          <p><strong>Issue Date:</strong> ${issueDate}</p>
+          <p><strong>Invoice Month:</strong> ${invoiceMonth}</p>
+        </div>
+        <div class="from-bill-to-section">
+          <div class="from-section"><strong>From:</strong><br>Reap Technologies Limited</div>
+          <div class="bill-to-section"><strong>Bill To:</strong><br>${billTo}</div>
+        </div>
+      ` : ''}
+      <table>
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th style="text-align: center;">Units</th>
+            <th style="text-align: center;">Unit Price</th>
+            <th style="text-align: right;">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${pageRows.map(item => `
+            <tr>
+              <td>${item.title}</td>
+              <td style="text-align: center;">${formatNumber(item.unit)}</td>
+              <td style="text-align: center;">${formatNumber(item.unitCost)}</td>
+              <td style="text-align: right;">${formatNumber(item.total)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      ${
+        isLastPage
+          ? `<p class="total-block">Total Amount: ${formatNumber(totalAmount)}</p>
+             <p class="due-text">Due Date: ${dueDate}</p>`
+          : ''
+      }
+    `;
+
+    previewContainer.appendChild(pageDiv);
+
+    // Handle footer placement
+    if (isFooterOnNewPage && isLastPage) {
+      const footerPageDiv = document.createElement('div');
+      footerPageDiv.classList.add('page');
+      footerPageDiv.innerHTML = `
+        <div class="footer-text">
+          <p>All amounts are in USD unless otherwise specified.</p>
+          <p>Payment to:</p>
+          <p>Beneficiary Name: Reap Technologies Limited</p>
+          <p>Bank Address: 18th Floor, The Center, 99 Queen’s Road Central, Central, Hong Kong</p>
+          <p>SWIFT Code: DHBKHKHH</p>
+          <p>HK Bank Code: 016</p>
+          <p>Branch Code: 478</p>
+          <p>Bank Account Number: 001153663</p>
+          <p>ERC20 USDC/USDT: 0x7c42fC9fBee1982Cb5d8Faef2698aA70666e888b</p>
+          <p>TRC20 USDT: TKVFC8Q8TSzeHmJ71SfLLFtMPYNxuaWeTy</p>
+        </div>
+      `;
+      previewContainer.appendChild(footerPageDiv);
+    } else if (isLastPage) {
+      const footerDiv = document.createElement('div');
+      footerDiv.classList.add('footer-text');
+      footerDiv.innerHTML = `
+        <p>All amounts are in USD unless otherwise specified.</p>
+        <p>Payment to:</p>
+        <p>Beneficiary Name: Reap Technologies Limited</p>
+        <p>Bank Address: 18th Floor, The Center, 99 Queen’s Road Central, Central, Hong Kong</p>
+        <p>SWIFT Code: DHBKHKHH</p>
+        <p>HK Bank Code: 016</p>
+        <p>Branch Code: 478</p>
+        <p>Bank Account Number: 001153663</p>
+        <p>ERC20 USDC/USDT: 0x7c42fC9fBee1982Cb5d8Faef2698aA70666e888b</p>
+        <p>TRC20 USDT: TKVFC8Q8TSzeHmJ71SfLLFtMPYNxuaWeTy</p>
+      `;
+      pageDiv.appendChild(footerDiv);
+    }
+  }
+}
+
+
+    async function generatePDF() {
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF('p', 'pt', 'a4');
+      const pages = document.querySelectorAll('.page');
+
+      pdf.setFont("Helvetica", "normal");
+      pdf.setFontSize(25);
+
+      for (let i = 0; i < pages.length; i++) {
+        const pageElement = pages[i];
+        pageElement.style.border = "none";
+
+        if (i > 0) pdf.addPage();
+
+        await html2canvas(pageElement, {
+          backgroundColor: null,
+          useCORS: true,
+          fontFamily: 'Helvetica, Arial, sans-serif'
+        }).then(canvas => {
+          const imgData = canvas.toDataURL('image/png');
+          const imgWidth = pdf.internal.pageSize.getWidth() - 60;
+          const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+          pdf.addImage(imgData, 'PNG', 30, 30, imgWidth, imgHeight);
+        });
+
+        pageElement.style.border = "1px solid #ddd";
+      }
+
+      pdf.save('invoice.pdf');
+    }
+
+    function formatDate(date) {
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = date.toLocaleString('en-US', { month: 'long' });
+      const year = date.getFullYear();
+      return `${day} ${month} ${year}`;
+    }
+
+    function addOneMonth(date) {
+      const result = new Date(date);
+      result.setMonth(result.getMonth() + 1);
+      return formatDate(result);
+    }
+  </script>
+</body>
+</html>
